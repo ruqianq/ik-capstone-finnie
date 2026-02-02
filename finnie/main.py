@@ -1,6 +1,7 @@
 """Main application entry point for FinnIE."""
 import os
 import structlog
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -22,13 +23,6 @@ structlog.configure(
 )
 
 logger = structlog.get_logger(__name__)
-
-# Initialize FastAPI app
-app = FastAPI(
-    title="FinnIE - Multi-Agent Personal Financial Advisor",
-    description="A multi-agent system for personal financial advisory powered by Google ADK",
-    version="1.0.0"
-)
 
 
 class QueryRequest(BaseModel):
@@ -52,9 +46,9 @@ orchestrator = None
 observability = None
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the agent system on startup."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan."""
     global config_manager, orchestrator, observability
     
     logger.info("Starting FinnIE system")
@@ -99,6 +93,20 @@ async def startup_event():
     logger.info("Orchestrator initialized")
     
     logger.info("FinnIE system startup complete")
+    
+    yield
+    
+    # Cleanup (if needed)
+    logger.info("FinnIE system shutdown")
+
+
+# Initialize FastAPI app with lifespan
+app = FastAPI(
+    title="FinnIE - Multi-Agent Personal Financial Advisor",
+    description="A multi-agent system for personal financial advisory powered by Google ADK",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 
 @app.get("/")
