@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    ports:
+      - "6006:6006"
+    environment:
+      - PHOENIX_PORT=6006
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  finnie:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    depends_on:
+      phoenix:
+        condition: service_healthy
+    volumes:
+      - ./finnie:/app/finnie
+      - ./config:/app/config
+    restart: unless-stopped
+
+networks:
+  default:
+    name: finnie-network

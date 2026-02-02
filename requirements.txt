@@ -1,0 +1,26 @@
+# Google Agent Development Kit
+google-genai>=0.2.0
+
+# Phoenix for observability
+arize-phoenix>=4.0.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# API and web framework
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.0.0
+
+# Environment management
+python-dotenv>=1.0.0
+
+# Logging
+structlog>=23.0.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+httpx>=0.25.0

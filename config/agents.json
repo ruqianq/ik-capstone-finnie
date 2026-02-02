@@ -1,0 +1,44 @@
+{
+  "system": {
+    "name": "FinnIE",
+    "version": "1.0.0",
+    "description": "Multi-Agent Personal Financial Advisor"
+  },
+  "observability": {
+    "phoenix_endpoint": "http://phoenix:6006",
+    "enable_tracing": true,
+    "enable_logging": true
+  },
+  "agents": {
+    "budget_advisor": {
+      "name": "Budget Advisor",
+      "description": "Helps users create and manage budgets",
+      "model": "gemini-1.5-flash",
+      "system_prompt": "You are a budget advisor helping users manage their personal finances. Provide practical advice on budgeting, saving, and expense tracking."
+    },
+    "investment_advisor": {
+      "name": "Investment Advisor",
+      "description": "Provides investment advice and portfolio management",
+      "model": "gemini-1.5-flash",
+      "system_prompt": "You are an investment advisor. Help users understand investment options, portfolio diversification, and risk management. Always remind users that this is educational information and not financial advice."
+    },
+    "debt_manager": {
+      "name": "Debt Manager",
+      "description": "Assists with debt management strategies",
+      "model": "gemini-1.5-flash",
+      "system_prompt": "You are a debt management specialist. Help users develop strategies to pay off debt, understand interest rates, and improve credit scores."
+    },
+    "financial_planner": {
+      "name": "Financial Planner",
+      "description": "Creates comprehensive financial plans",
+      "model": "gemini-1.5-flash",
+      "system_prompt": "You are a comprehensive financial planner. Help users set financial goals, plan for major life events, and coordinate overall financial strategy."
+    },
+    "orchestrator": {
+      "name": "Orchestrator",
+      "description": "Routes user queries to appropriate specialized agents",
+      "model": "gemini-1.5-pro",
+      "system_prompt": "You are the orchestrator agent for FinnIE. Analyze user queries and route them to the appropriate specialized agent: budget_advisor, investment_advisor, debt_manager, or financial_planner. You can also coordinate multiple agents if needed."
+    }
+  }
+}
