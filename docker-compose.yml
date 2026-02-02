@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    ports:
+      - "6006:6006"
+      - "4317:4317"
+    environment:
+      - PHOENIX_PORT=6006
+    volumes:
+      - phoenix_data:/phoenix/data
+    networks:
+      - finnie-network
+    restart: unless-stopped
+
+  finnie-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      - PHOENIX_HOST=phoenix
+      - PHOENIX_PORT=6006
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:4317
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data
+      - faiss_data:/app/faiss_data
+    networks:
+      - finnie-network
+    depends_on:
+      - phoenix
+    restart: unless-stopped
+
+volumes:
+  phoenix_data:
+  faiss_data:
+
+networks:
+  finnie-network:
+    driver: bridge
