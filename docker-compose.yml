@@ -1,0 +1,26 @@
+services:
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    ports:
+      - "6006:6006"
+      - "4317:4317" # OTLP gRPC receiver
+    volumes:
+      - phoenix_data:/phoenix/data
+    environment:
+      - PHOENIX_PORT=6006
+
+  finnie-app:
+    build: .
+    ports:
+      - "8501:8501"
+    environment:
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:4317
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY} 
+    volumes:
+      - .:/app
+    depends_on:
+      - phoenix
+
+volumes:
+  phoenix_data:
