@@ -3,10 +3,11 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.resources import Resource
+from openinference.instrumentation.langchain import LangChainInstrumentor
 import os
 
 def setup_observability():
-    """Configures OpenTelemetry to send traces to Phoenix."""
+    """Configures OpenTelemetry and auto-instrumentation."""
     resource = Resource(attributes={
         "service.name": "finnie-agent"
     })
@@ -21,5 +22,8 @@ def setup_observability():
     
     trace_provider.add_span_processor(span_processor)
     trace.set_tracer_provider(trace_provider)
+    
+    # Auto-instrument LangChain
+    LangChainInstrumentor().instrument(tracer_provider=trace_provider)
     
     return trace.get_tracer(__name__)

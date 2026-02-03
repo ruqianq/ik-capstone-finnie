@@ -16,9 +16,10 @@ services:
     environment:
       - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:4317
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:4317
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY} 
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
     volumes:
       - .:/app
+      - ./data:/app/data
     depends_on:
       - phoenix
 

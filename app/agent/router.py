@@ -1,17 +1,16 @@
 from opentelemetry import trace
 
+from app.agent.finance_agent import FinanceAgent
+
 tracer = trace.get_tracer(__name__)
+finance_agent = FinanceAgent()
 
 def route_and_process(user_input: str) -> str:
     """
-    Stub function for routing user input to agents.
-    For Phase 1, this just echoes the input.
+    Routes user input to the appropriate agent.
     """
-    with tracer.start_as_current_span("router_process") as span:
-        span.set_attribute("user.input", user_input)
-        
-        # TODO: Implement actual router logic with Google ADK
-        response = f"Echo: {user_input}"
-        
-        span.set_attribute("agent.response", response)
-        return response
+    # Simple routing logic for Phase 2: Everything goes to Finance Agent
+    # In Phase 3, we can add intent classification here
+    
+    response = finance_agent.process_query(user_input)
+    return response

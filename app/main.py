@@ -35,9 +35,10 @@ if prompt := st.chat_input("Ask me about your portfolio or the market..."):
     # Process with Agent Router
     with st.spinner("Thinking..."):
         with tracer.start_as_current_span("streamlit_interaction") as span:
-            span.set_attribute("input.prompt", prompt)
+            span.set_attribute("openinference.span.kind", "CHAIN")
+            span.set_attribute("input.value", prompt)
             response = route_and_process(prompt)
-            span.set_attribute("output.response", response)
+            span.set_attribute("output.value", response)
 
     # Add assistant response to history
     st.session_state.messages.append({"role": "assistant", "content": response})

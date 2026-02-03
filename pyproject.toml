@@ -11,7 +11,13 @@ dependencies = [
     "opentelemetry-api",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp",
-    "python-dotenv"
+    "python-dotenv",
+    "langchain",
+    "langchain-community",
+    "langchain-text-splitters",
+    "openinference-instrumentation-langchain",
+    "faiss-cpu",
+    "sentence-transformers"
 ]
 
 [build-system]
