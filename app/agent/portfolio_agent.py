@@ -1,4 +1,3 @@
-```python
 from app.tools.market_data import MarketDataTool
 import re
 
