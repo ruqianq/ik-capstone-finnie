@@ -17,7 +17,9 @@ dependencies = [
     "langchain-text-splitters",
     "openinference-instrumentation-langchain",
     "faiss-cpu",
-    "sentence-transformers"
+    "sentence-transformers",
+    "yfinance",
+    "pandas"
 ]
 
 [build-system]
