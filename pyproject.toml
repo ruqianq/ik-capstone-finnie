@@ -19,7 +19,11 @@ dependencies = [
     "faiss-cpu",
     "sentence-transformers",
     "yfinance",
-    "pandas"
+    "pandas",
+    "langchain-openai",
+    "langgraph",
+    "sqlalchemy",
+    "plotly"
 ]
 
 [build-system]
