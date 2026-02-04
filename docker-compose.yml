@@ -2,8 +2,8 @@ services:
   phoenix:
     image: arizephoenix/phoenix:latest
     ports:
-      - "6006:6006"
-      - "4317:4317" # OTLP gRPC receiver
+      - "6007:6006"
+      - "4318:4317" # OTLP gRPC receiver
     volumes:
       - phoenix_data:/phoenix/data
     environment:
@@ -17,6 +17,7 @@ services:
       - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:4317
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:4317
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
       - .:/app
       - ./data:/app/data
