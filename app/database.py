@@ -1,5 +1,6 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float
+from sqlalchemy import create_engine, Column, Integer, String, Float, Date
 from sqlalchemy.orm import declarative_base, sessionmaker
+from datetime import date
 
 DATABASE_URL = "sqlite:///./data/portfolio.db"
 
@@ -14,6 +15,17 @@ class PortfolioItem(Base):
     symbol = Column(String, index=True)
     quantity = Column(Float)
     avg_price = Column(Float)
+
+
+class FinancialGoal(Base):
+    __tablename__ = "financial_goals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True)
+    target_amount = Column(Float)
+    current_amount = Column(Float, default=0.0)
+    target_date = Column(Date)
+    category = Column(String)  # retirement, house, education, emergency, other
 
 def init_db():
     Base.metadata.create_all(bind=engine)

@@ -41,6 +41,44 @@ class NewsSynthesizerAgent:
         # Default: general market news
         return self.get_market_news()
 
+    def _extract_news_fields(self, item: Dict) -> Dict:
+        """
+        Extracts news fields handling both old and new yfinance formats.
+        """
+        # Try new format first (yfinance >= 0.2.40)
+        if 'content' in item:
+            content = item.get('content', {})
+            title = content.get('title', 'No title')
+            provider = content.get('provider', {})
+            publisher = provider.get('displayName', 'Unknown')
+            link = content.get('canonicalUrl', {}).get('url', '')
+            pub_date_str = content.get('pubDate', '')
+
+            # Parse ISO date string
+            if pub_date_str:
+                try:
+                    pub_date = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
+                    timestamp = pub_date.timestamp()
+                except Exception:
+                    timestamp = 0
+            else:
+                timestamp = 0
+
+            return {
+                'title': title,
+                'publisher': publisher,
+                'link': link,
+                'timestamp': timestamp
+            }
+
+        # Fall back to old format
+        return {
+            'title': item.get('title', 'No title'),
+            'publisher': item.get('publisher', 'Unknown'),
+            'link': item.get('link', ''),
+            'timestamp': item.get('providerPublishTime', 0)
+        }
+
     def get_stock_news(self, symbol: str, limit: int = 5) -> str:
         """
         Fetches and summarizes news for a specific stock.
@@ -59,12 +97,13 @@ class NewsSynthesizerAgent:
 
             articles_text = []
             for i, item in enumerate(news_items, 1):
-                title = item.get('title', 'No title')
-                publisher = item.get('publisher', 'Unknown')
-                link = item.get('link', '')
+                fields = self._extract_news_fields(item)
+                title = fields['title']
+                publisher = fields['publisher']
+                link = fields['link']
+                timestamp = fields['timestamp']
 
                 # Format timestamp
-                timestamp = item.get('providerPublishTime', 0)
                 if timestamp:
                     pub_date = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M')
                 else:
@@ -104,8 +143,9 @@ class NewsSynthesizerAgent:
                 news = ticker.news
                 if news:
                     for item in news[:2]:  # Top 2 from each
-                        item['related_symbol'] = symbol
-                        all_news.append(item)
+                        fields = self._extract_news_fields(item)
+                        fields['related_symbol'] = symbol
+                        all_news.append(fields)
             except Exception:
                 continue
 
@@ -113,14 +153,14 @@ class NewsSynthesizerAgent:
             return "Unable to fetch market news at this time."
 
         # Sort by timestamp (most recent first)
-        all_news.sort(key=lambda x: x.get('providerPublishTime', 0), reverse=True)
+        all_news.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
 
         # Deduplicate by title
         seen_titles = set()
         unique_news = []
         for item in all_news:
             title = item.get('title', '')
-            if title and title not in seen_titles:
+            if title and title != 'No title' and title not in seen_titles:
                 seen_titles.add(title)
                 unique_news.append(item)
 
@@ -130,7 +170,7 @@ class NewsSynthesizerAgent:
             publisher = item.get('publisher', 'Unknown')
             related = item.get('related_symbol', '')
 
-            timestamp = item.get('providerPublishTime', 0)
+            timestamp = item.get('timestamp', 0)
             if timestamp:
                 pub_date = datetime.fromtimestamp(timestamp).strftime('%m/%d %H:%M')
             else:
@@ -196,8 +236,9 @@ class NewsSynthesizerAgent:
                     news = ticker.news
                     if news:
                         for item in news[:2]:
-                            item['related_symbol'] = stock
-                            all_news.append(item)
+                            fields = self._extract_news_fields(item)
+                            fields['related_symbol'] = stock
+                            all_news.append(fields)
                 except Exception:
                     continue
 
@@ -207,9 +248,9 @@ class NewsSynthesizerAgent:
             # Deduplicate and sort
             seen = set()
             unique = []
-            for item in sorted(all_news, key=lambda x: x.get('providerPublishTime', 0), reverse=True):
+            for item in sorted(all_news, key=lambda x: x.get('timestamp', 0), reverse=True):
                 title = item.get('title', '')
-                if title not in seen:
+                if title and title != 'No title' and title not in seen:
                     seen.add(title)
                     unique.append(item)
 
