@@ -66,6 +66,23 @@ health-check:
 	@curl -s http://localhost:6007 > /dev/null && echo "✓ Phoenix is running" || echo "✗ Phoenix is not running"
 	@curl -s http://localhost:11434 > /dev/null && echo "✓ Ollama is running" || echo "✗ Ollama is not running"
 
+# Run evaluation on traces
+evaluate:
+	python -m app.evaluation.runner --limit 50 --output eval_results.json
+	@echo "Evaluation complete! Results saved to eval_results.json"
+
+# Run evaluation with more traces
+evaluate-full:
+	python -m app.evaluation.runner --limit 200 --output eval_results.json
+
+# Start Phoenix UI
+phoenix:
+	python -c "import phoenix as px; px.launch_app()"
+
+# Debug Phoenix traces - see what's being stored
+debug-phoenix:
+	python scripts/debug_phoenix.py
+
 # Full development setup
 dev-setup: install ollama-setup ingest
 	@echo "Development environment is ready!"
