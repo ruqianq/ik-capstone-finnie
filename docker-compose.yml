@@ -9,6 +9,15 @@ services:
     environment:
       - PHOENIX_PORT=6006
 
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Pull embedding model on startup
+    entrypoint: ["/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull nomic-embed-text && wait"]
+
   finnie-app:
     build: .
     ports:
@@ -18,11 +27,15 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix:4317
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - EMBEDDING_MODEL=nomic-embed-text
     volumes:
       - .:/app
       - ./data:/app/data
     depends_on:
       - phoenix
+      - ollama
 
 volumes:
   phoenix_data:
+  ollama_data:
