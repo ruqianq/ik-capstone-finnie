@@ -10,46 +10,209 @@ FinnIE (Financial Intelligence Engine) is an AI-powered personal financial advis
 - **Real-Time Market Data**: Integration with Yahoo Finance for live data
 - **Portfolio Management**: Track holdings with database persistence
 - **Observability**: Full tracing with Arize Phoenix and OpenTelemetry
+- **Evaluation Engine**: LLM-as-judge evaluation with Phoenix trace analysis
 - **Local Embeddings**: Cost-effective Ollama embeddings with nomic-embed-text
 
 ## Architecture
 
+### System Overview
+
+```mermaid
+graph TB
+    subgraph UI["Streamlit UI :8501"]
+        Main["Chat Interface"]
+        P1["Portfolio Page"]
+        P2["Market Page"]
+        P3["Goals Page"]
+        P4["Evaluation Dashboard"]
+    end
+
+    subgraph Orchestration["LangGraph Workflow"]
+        Router["Intent Router"]
+        IC["Intent Classifier<br/>GPT-4o-mini"]
+        KB_R["Keyword-Based<br/>Fallback Router"]
+        Router -->|LangGraph mode| IC
+        Router -->|Fallback mode| KB_R
+    end
+
+    subgraph Agents["Specialized Agents"]
+        FA["Finance Q&A<br/>Agent"]
+        PA["Portfolio<br/>Agent"]
+        MA["Market Analysis<br/>Agent"]
+        GA["Goal Planning<br/>Agent"]
+        NA["News Synthesizer<br/>Agent"]
+        TA["Tax Education<br/>Agent"]
+    end
+
+    subgraph DataSources["Data Sources"]
+        RAG["FAISS Vector Store<br/>21+ financial docs"]
+        DB["SQLite Database<br/>Portfolio & Goals"]
+        YF["Yahoo Finance API<br/>Real-time market data"]
+        TKB["Tax Knowledge Base<br/>2024 rules embedded"]
+    end
+
+    subgraph LLM["LLM Layer"]
+        GPT["OpenAI GPT-4o-mini"]
+    end
+
+    subgraph Embeddings["Embedding Layer"]
+        OL["Ollama<br/>nomic-embed-text"]
+    end
+
+    subgraph Observability["Observability & Evaluation"]
+        OTEL["OpenTelemetry<br/>Instrumentation"]
+        PH["Arize Phoenix<br/>Trace Storage & UI"]
+        EVAL["Evaluation Engine<br/>LLM-as-Judge"]
+    end
+
+    Main --> Router
+    IC --> Agents
+    KB_R --> Agents
+
+    FA --> RAG
+    FA --> GPT
+    PA --> DB
+    PA --> YF
+    MA --> YF
+    MA --> GPT
+    GA --> GPT
+    NA --> YF
+    NA --> GPT
+    TA --> TKB
+    TA --> GPT
+
+    RAG --> OL
+
+    OTEL --> PH
+    PH --> EVAL
+    EVAL --> GPT
+    EVAL -->|Upload scores| PH
+
+    Main -.->|traces| OTEL
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Streamlit UI                            │
-└─────────────────────────────┬───────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    LangGraph Workflow                           │
-│  ┌─────────────┐    ┌──────────────────────────────────────┐   │
-│  │   Intent    │───▶│         Conditional Routing          │   │
-│  │ Classifier  │    └──────────────────────────────────────┘   │
-│  └─────────────┘                      │                         │
-│                                       ▼                         │
-│  ┌──────────┬──────────┬──────────┬──────────┬──────────┬────┐ │
-│  │ Finance  │Portfolio │  Market  │   Goal   │   News   │Tax │ │
-│  │   Q&A    │  Agent   │  Agent   │  Agent   │  Agent   │Agent│ │
-│  └────┬─────┴────┬─────┴────┬─────┴────┬─────┴────┬─────┴──┬─┘ │
-└───────┼──────────┼──────────┼──────────┼──────────┼────────┼───┘
-        │          │          │          │          │        │
-        ▼          ▼          ▼          ▼          ▼        ▼
-┌───────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌────┐ ┌──────┐
-│    RAG    │ │SQLite DB│ │ yfinance│ │   LLM   │ │News│ │ Tax  │
-│  (FAISS)  │ │Portfolio│ │  Market │ │Planning │ │API │ │ KB   │
-└───────────┘ └─────────┘ └─────────┘ └─────────┘ └────┘ └──────┘
+
+### Request Flow
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as Streamlit UI
+    participant Router as Intent Router
+    participant IC as Intent Classifier<br/>(GPT-4o-mini)
+    participant Agent as Specialized Agent
+    participant DS as Data Source
+    participant LLM as GPT-4o-mini
+    participant OTEL as OpenTelemetry
+    participant PH as Phoenix
+
+    User->>UI: User query
+    UI->>Router: route_and_process(query)
+
+    alt LangGraph Mode
+        Router->>IC: classify_intent(query)
+        IC-->>Router: intent (e.g. tax_education)
+    else Keyword Fallback
+        Router->>Router: match keywords
+    end
+
+    Router->>Agent: agent.process_query()
+    Agent->>DS: Fetch relevant data
+    DS-->>Agent: Data / documents
+
+    opt LLM Enhancement
+        Agent->>LLM: Generate response
+        LLM-->>Agent: Formatted answer
+    end
+
+    Agent-->>Router: Response
+    Router-->>UI: Response + agent badge
+    UI-->>User: Display response
+
+    UI--)OTEL: Export spans (async)
+    OTEL--)PH: Store traces via OTLP/gRPC
+```
+
+### Evaluation Pipeline
+
+```mermaid
+graph LR
+    subgraph Phoenix["Phoenix Trace Store"]
+        TR["Stored Traces<br/>spans, inputs,<br/>outputs, metadata"]
+    end
+
+    subgraph Runner["Evaluation Runner"]
+        EX["Extract<br/>Trace Data"]
+        RUN["Run<br/>Evaluators"]
+        UP["Upload<br/>Results"]
+    end
+
+    subgraph Evaluators["LLM-as-Judge Evaluators"]
+        E1["RAG Relevance"]
+        E2["Groundedness"]
+        E3["Routing Accuracy"]
+        E4["Response Quality"]
+        E5["Hallucination Check"]
+    end
+
+    subgraph Output["Results"]
+        JSON["eval_results.json"]
+        PHUI["Phoenix UI<br/>SpanEvaluations"]
+        DASH["Streamlit<br/>Dashboard"]
+    end
+
+    TR --> EX --> RUN
+    RUN --> E1 & E2 & E3 & E4 & E5
+    E1 & E2 & E3 & E4 & E5 --> UP
+    UP --> JSON & PHUI
+    JSON --> DASH
+```
+
+### Docker Services
+
+```mermaid
+graph TB
+    subgraph Docker["Docker Compose Stack"]
+        subgraph App["finnie-app :8501"]
+            ST["Streamlit App"]
+            AG["6 Specialized Agents"]
+            WF["LangGraph Workflow"]
+            EV["Evaluation Engine"]
+        end
+
+        subgraph PhoenixSvc["phoenix :6006 → :6007"]
+            PUI["Phoenix UI"]
+            OTLP["OTLP Receiver :4317"]
+            TRS["Trace Storage"]
+        end
+
+        subgraph OllamaSvc["ollama :11434"]
+            NE["nomic-embed-text"]
+        end
+    end
+
+    subgraph External["External APIs"]
+        OAI["OpenAI API"]
+        YFI["Yahoo Finance"]
+    end
+
+    App -->|"traces (gRPC)"| OTLP
+    App -->|"embeddings"| OllamaSvc
+    App -->|"LLM calls"| OAI
+    App -->|"market data"| YFI
+    EV -->|"fetch traces"| PhoenixSvc
+    EV -->|"upload evals"| PhoenixSvc
 ```
 
 ## Agents
 
 | Agent | Purpose | Tools/Data Sources |
 |-------|---------|-------------------|
-| **Finance Q&A** | General financial education | RAG knowledge base |
+| **Finance Q&A** | General financial education | RAG knowledge base (FAISS + Ollama) |
 | **Portfolio** | Track holdings, get quotes | SQLite, yfinance |
 | **Market Analysis** | Market overview, sectors, technicals | yfinance |
 | **Goal Planning** | Retirement/savings calculations | LLM-powered planning |
 | **News Synthesizer** | Market news and sentiment | yfinance news API |
-| **Tax Education** | Tax strategies, account types | Embedded knowledge base |
+| **Tax Education** | Tax strategies, account types | Embedded knowledge base (2024 rules) |
 
 ## Quick Start
 
@@ -181,10 +344,18 @@ ik-capstone-finnie/
 │   ├── rag/
 │   │   ├── ingest.py         # Document ingestion
 │   │   └── retriever.py      # Vector store retrieval
+│   ├── evaluation/
+│   │   ├── evaluators.py     # LLM-as-judge evaluators
+│   │   └── runner.py         # Phoenix trace evaluation runner
 │   ├── workflow/
 │   │   └── graph.py          # LangGraph workflow
 │   ├── tools/
 │   │   └── market_data.py    # Market data tools
+│   ├── pages/
+│   │   ├── 1_📊_Portfolio.py
+│   │   ├── 2_📈_Market.py
+│   │   ├── 3_🎯_Goals.py
+│   │   └── 4_🔬_Evaluation.py
 │   ├── main.py               # Streamlit application
 │   ├── database.py           # SQLite portfolio storage
 │   └── observability.py      # OpenTelemetry setup
@@ -221,6 +392,32 @@ The knowledge base contains 21 comprehensive articles covering:
    python app/rag/ingest.py
    ```
 
+## Evaluation
+
+FinnIE includes an LLM-as-judge evaluation engine that analyzes agent performance using Phoenix traces.
+
+### Evaluator Types
+
+| Evaluator | What It Measures | Score Range |
+|-----------|-----------------|-------------|
+| **RAG Relevance** | Are retrieved documents relevant to the query? | 1-5 |
+| **Groundedness** | Is the response grounded in retrieved sources? | 1-5 |
+| **Routing Accuracy** | Was the correct agent selected? | 1-5 |
+| **Response Quality** | Helpfulness, accuracy, coherence, completeness | 1-5 |
+| **Hallucination** | Does the response contain fabricated facts? | 1-5 |
+
+### Running Evaluations
+
+```bash
+# Inside Docker container
+docker-compose exec finnie-app python -m app.evaluation.runner --limit 50 --phoenix-url http://phoenix:6006
+
+# Or use make command
+make evaluate
+```
+
+Results are uploaded to Phoenix as SpanEvaluations and saved to `eval_results.json` for the Streamlit dashboard.
+
 ## Testing
 
 ### Run All Tests
@@ -252,6 +449,7 @@ FinnIE uses Arize Phoenix for observability:
 - **Traces**: Full request/response tracing
 - **Spans**: Agent execution, LLM calls, retrieval operations
 - **Metrics**: Latency, token usage, error rates
+- **Evaluations**: LLM-as-judge scores attached to traces
 
 Access the Phoenix UI at http://localhost:6007 to view traces.
 
