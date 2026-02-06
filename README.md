@@ -154,41 +154,6 @@ sequenceDiagram
     UI-->>User: Display comprehensive answer
 ```
 
-### Single-Agent Request Flow
-
-```mermaid
-sequenceDiagram
-    actor User
-    participant UI as Streamlit UI
-    participant Router as Intent Router
-    participant Orch as Orchestrator
-    participant LLM as Supervisor LLM
-    participant Agent as Specialized Agent
-    participant DS as Data Source
-    participant OTEL as OpenTelemetry
-    participant PH as Phoenix
-
-    User->>UI: Simple query
-    UI->>Router: route_and_process(query)
-    Router->>Orch: invoke(query)
-
-    Orch->>LLM: Which agents?
-    LLM-->>Orch: [finance_qa]
-
-    Orch->>Agent: process_query()
-    Agent->>DS: Fetch data
-    DS-->>Agent: Documents
-    Agent-->>Orch: Response
-
-    Orch->>Orch: Single agent, passthrough
-    Orch-->>Router: Response (no synthesis needed)
-    Router-->>UI: Response
-    UI-->>User: Display response
-
-    UI--)OTEL: Export spans (async)
-    OTEL--)PH: Store traces via OTLP/gRPC
-```
-
 ### Evaluation Pipeline
 
 ```mermaid
