@@ -27,12 +27,24 @@ graph TB
         P4["Evaluation Dashboard"]
     end
 
-    subgraph Orchestration["LangGraph Workflow"]
+    subgraph Routing["Routing Layer"]
         Router["Intent Router"]
+        ORCH["Agent Orchestrator<br/>(Supervisor Pattern)"]
         IC["Intent Classifier<br/>GPT-4o-mini"]
-        KB_R["Keyword-Based<br/>Fallback Router"]
+        KB_R["Keyword-Based<br/>Fallback"]
+        Router -->|Orchestrator mode| ORCH
         Router -->|LangGraph mode| IC
         Router -->|Fallback mode| KB_R
+    end
+
+    subgraph OrchestratorLoop["Orchestrator Cycle"]
+        PLAN["Plan<br/>LLM decides agents"]
+        EXEC["Execute Agent"]
+        REV["Review<br/>Need more?"]
+        SYNTH["Synthesize<br/>Combine results"]
+        PLAN --> EXEC --> REV
+        REV -->|Yes| EXEC
+        REV -->|No| SYNTH
     end
 
     subgraph Agents["Specialized Agents"]
@@ -66,6 +78,8 @@ graph TB
     end
 
     Main --> Router
+    ORCH --> PLAN
+    EXEC --> Agents
     IC --> Agents
     KB_R --> Agents
 
@@ -91,41 +105,84 @@ graph TB
     Main -.->|traces| OTEL
 ```
 
-### Request Flow
+### Orchestrator Flow (Supervisor Pattern)
 
 ```mermaid
 sequenceDiagram
     actor User
     participant UI as Streamlit UI
     participant Router as Intent Router
-    participant IC as Intent Classifier<br/>(GPT-4o-mini)
+    participant Orch as Orchestrator
+    participant LLM as Supervisor LLM
+    participant A1 as Agent 1
+    participant A2 as Agent 2
+
+    User->>UI: "Should I sell AAPL given market and tax implications?"
+    UI->>Router: route_and_process(query)
+    Router->>Orch: invoke(query)
+
+    Note over Orch,LLM: Plan Phase
+    Orch->>LLM: Which agents are needed?
+    LLM-->>Orch: [portfolio, market_analysis, tax_education]
+
+    Note over Orch,A1: Execute Phase
+    Orch->>A1: Portfolio Agent.process_query()
+    A1-->>Orch: AAPL holdings + cost basis
+
+    Note over Orch,LLM: Review Phase
+    Orch->>Orch: More planned agents remain, continue
+
+    Orch->>A2: Market Agent.process_query()
+    A2-->>Orch: AAPL technicals + market trends
+
+    Orch->>Orch: More planned agents remain, continue
+
+    Orch->>A1: Tax Agent.process_query()
+    A1-->>Orch: Capital gains implications
+
+    Note over Orch,LLM: Review Phase
+    Orch->>Orch: All planned agents done
+    Orch->>LLM: Need additional agents?
+    LLM-->>Orch: No, sufficient
+
+    Note over Orch,LLM: Synthesis Phase
+    Orch->>LLM: Synthesize all 3 results
+    LLM-->>Orch: Unified recommendation
+
+    Orch-->>Router: Synthesized response
+    Router-->>UI: Response
+    UI-->>User: Display comprehensive answer
+```
+
+### Single-Agent Request Flow
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as Streamlit UI
+    participant Router as Intent Router
+    participant Orch as Orchestrator
+    participant LLM as Supervisor LLM
     participant Agent as Specialized Agent
     participant DS as Data Source
-    participant LLM as GPT-4o-mini
     participant OTEL as OpenTelemetry
     participant PH as Phoenix
 
-    User->>UI: User query
+    User->>UI: Simple query
     UI->>Router: route_and_process(query)
+    Router->>Orch: invoke(query)
 
-    alt LangGraph Mode
-        Router->>IC: classify_intent(query)
-        IC-->>Router: intent (e.g. tax_education)
-    else Keyword Fallback
-        Router->>Router: match keywords
-    end
+    Orch->>LLM: Which agents?
+    LLM-->>Orch: [finance_qa]
 
-    Router->>Agent: agent.process_query()
-    Agent->>DS: Fetch relevant data
-    DS-->>Agent: Data / documents
+    Orch->>Agent: process_query()
+    Agent->>DS: Fetch data
+    DS-->>Agent: Documents
+    Agent-->>Orch: Response
 
-    opt LLM Enhancement
-        Agent->>LLM: Generate response
-        LLM-->>Agent: Formatted answer
-    end
-
-    Agent-->>Router: Response
-    Router-->>UI: Response + agent badge
+    Orch->>Orch: Single agent, passthrough
+    Orch-->>Router: Response (no synthesis needed)
+    Router-->>UI: Response
     UI-->>User: Display response
 
     UI--)OTEL: Export spans (async)
@@ -273,16 +330,18 @@ graph TB
 | `OLLAMA_BASE_URL` | Ollama server URL | `http://localhost:11434` |
 | `EMBEDDING_MODEL` | Embedding model name | `nomic-embed-text` |
 | `USE_LANGGRAPH` | Enable LangGraph routing | `true` |
+| `USE_ORCHESTRATOR` | Enable multi-agent orchestrator | `false` |
 | `PHOENIX_COLLECTOR_ENDPOINT` | Phoenix OTLP endpoint | `http://localhost:4317` |
 
 ### Routing Modes
 
-FinnIE supports two routing modes:
+FinnIE supports three routing modes with cascading fallback:
 
-1. **LangGraph Mode** (default): Uses GPT-4o-mini for intelligent intent classification
-2. **Keyword Mode**: Fast heuristic routing based on keyword matching
+1. **Orchestrator Mode** (`USE_ORCHESTRATOR=true`): Multi-agent supervisor pattern — plans which agents to call, executes sequentially, reviews, and synthesizes a unified response. Best for accuracy.
+2. **LangGraph Mode** (`USE_LANGGRAPH=true`, default): Single-agent LLM-based intent classification.
+3. **Keyword Mode**: Fast heuristic routing based on keyword matching (always available as fallback).
 
-Set `USE_LANGGRAPH=false` to use keyword-based routing.
+Set `USE_ORCHESTRATOR=true` for multi-agent orchestration, or `USE_LANGGRAPH=false` for keyword-only routing.
 
 ## Usage Examples
 

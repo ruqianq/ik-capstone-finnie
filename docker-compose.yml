@@ -29,6 +29,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OLLAMA_BASE_URL=http://ollama:11434
       - EMBEDDING_MODEL=nomic-embed-text
+      - USE_ORCHESTRATOR=true
     volumes:
       - .:/app
       - ./data:/app/data

@@ -22,6 +22,7 @@ tracer = trace.get_tracer(__name__)
 
 # Configuration
 USE_LANGGRAPH = os.getenv("USE_LANGGRAPH", "true").lower() == "true"
+USE_ORCHESTRATOR = os.getenv("USE_ORCHESTRATOR", "false").lower() == "true"
 
 # Initialize agents (used by both routing modes)
 finance_agent = FinanceAgent()
@@ -44,24 +45,66 @@ def _get_langgraph_workflow():
     return _langgraph_workflow
 
 
+# Lazy-load Orchestrator workflow
+_orchestrator_workflow = None
+
+
+def _get_orchestrator_workflow():
+    """Lazy initialization of orchestrator workflow."""
+    global _orchestrator_workflow
+    if _orchestrator_workflow is None:
+        from app.workflow.orchestrator import OrchestratorWorkflow
+        _orchestrator_workflow = OrchestratorWorkflow()
+    return _orchestrator_workflow
+
+
 def route_and_process(user_input: str, context: str = None) -> str:
     """
-    Routes user input to the appropriate agent.
+    Routes user input to the appropriate agent(s).
 
-    Uses LangGraph workflow by default for intelligent LLM-based routing.
-    Falls back to keyword-based routing if LangGraph fails or is disabled.
+    Supports three routing modes with cascading fallback:
+    1. Orchestrator (USE_ORCHESTRATOR=true): Multi-agent supervisor pattern
+    2. LangGraph (USE_LANGGRAPH=true): Single-agent LLM-based routing
+    3. Keyword-based: Fast heuristic routing (always available as fallback)
 
     Args:
         user_input: The user's query
         context: Optional context from previous conversation turns
 
     Returns:
-        Response string from the appropriate agent
+        Response string from the appropriate agent(s)
     """
     with tracer.start_as_current_span("route_and_process") as span:
         span.set_attribute("input.value", user_input)
-        span.set_attribute("routing.mode", "langgraph" if USE_LANGGRAPH else "keyword")
 
+        # Determine routing mode
+        if USE_ORCHESTRATOR:
+            mode = "orchestrator"
+        elif USE_LANGGRAPH:
+            mode = "langgraph"
+        else:
+            mode = "keyword"
+        span.set_attribute("routing.mode", mode)
+
+        # 1. Try orchestrator (multi-agent supervisor)
+        if USE_ORCHESTRATOR:
+            try:
+                orchestrator = _get_orchestrator_workflow()
+                result = orchestrator.invoke(user_input, context=context)
+                response = result.get("response", "")
+                agents_used = result.get("agents_used", [])
+
+                span.set_attribute("routing.agents_used", str(agents_used))
+                span.set_attribute("routing.plan", str(result.get("plan", [])))
+                span.set_attribute("routing.reasoning", result.get("reasoning", ""))
+
+                if response:
+                    return response
+            except Exception as e:
+                span.set_attribute("routing.orchestrator_error", str(e))
+                print(f"Orchestrator failed, falling back: {e}")
+
+        # 2. Try LangGraph single-dispatch
         if USE_LANGGRAPH:
             try:
                 workflow = _get_langgraph_workflow()
@@ -73,12 +116,11 @@ def route_and_process(user_input: str, context: str = None) -> str:
 
                 if response:
                     return response
-                # Fall through to keyword routing if no response
             except Exception as e:
                 span.set_attribute("routing.langgraph_error", str(e))
                 print(f"LangGraph routing failed, falling back to keywords: {e}")
 
-        # Keyword-based routing (fallback)
+        # 3. Keyword-based routing (final fallback)
         return _keyword_based_routing(user_input)
 
 

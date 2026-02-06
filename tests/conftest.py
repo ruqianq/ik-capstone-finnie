@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Set test environment variables before importing app modules
 os.environ["OPENAI_API_KEY"] = "test-api-key"
 os.environ["USE_LANGGRAPH"] = "false"
+os.environ["USE_ORCHESTRATOR"] = "false"
 os.environ["OLLAMA_BASE_URL"] = "http://localhost:11434"
 os.environ["EMBEDDING_MODEL"] = "nomic-embed-text"
 
