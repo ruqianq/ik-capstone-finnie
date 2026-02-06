@@ -1,3 +1,14 @@
+"""
+Router module for FinnIE multi-agent system.
+
+Supports two routing modes:
+1. LangGraph (default): LLM-based intent classification with StateGraph orchestration
+2. Keyword-based (fallback): Fast heuristic routing based on keyword matching
+
+Set USE_LANGGRAPH=false in environment to use keyword-based routing.
+"""
+
+import os
 from opentelemetry import trace
 
 from app.agent.finance_agent import FinanceAgent
@@ -9,7 +20,10 @@ from app.agent.tax_agent import TaxEducationAgent
 
 tracer = trace.get_tracer(__name__)
 
-# Initialize all agents
+# Configuration
+USE_LANGGRAPH = os.getenv("USE_LANGGRAPH", "true").lower() == "true"
+
+# Initialize agents (used by both routing modes)
 finance_agent = FinanceAgent()
 portfolio_agent = PortfolioAgent()
 goal_agent = GoalPlanningAgent()
@@ -17,18 +31,62 @@ market_agent = MarketAnalysisAgent()
 news_agent = NewsSynthesizerAgent()
 tax_agent = TaxEducationAgent()
 
+# Lazy-load LangGraph workflow
+_langgraph_workflow = None
 
-def route_and_process(user_input: str) -> str:
+
+def _get_langgraph_workflow():
+    """Lazy initialization of LangGraph workflow."""
+    global _langgraph_workflow
+    if _langgraph_workflow is None:
+        from app.workflow.graph import FinancialWorkflow
+        _langgraph_workflow = FinancialWorkflow()
+    return _langgraph_workflow
+
+
+def route_and_process(user_input: str, context: str = None) -> str:
     """
-    Routes user input to the appropriate agent based on intent classification.
+    Routes user input to the appropriate agent.
 
-    Agent routing priority:
-    1. Tax Education Agent - tax-related queries
-    2. News Synthesizer Agent - news-related queries
-    3. Market Analysis Agent - market overview, trends, technical analysis
-    4. Goal Planning Agent - financial goals and planning
-    5. Portfolio Agent - portfolio management, stock prices, trades
-    6. Finance Q&A Agent - general financial education (default)
+    Uses LangGraph workflow by default for intelligent LLM-based routing.
+    Falls back to keyword-based routing if LangGraph fails or is disabled.
+
+    Args:
+        user_input: The user's query
+        context: Optional context from previous conversation turns
+
+    Returns:
+        Response string from the appropriate agent
+    """
+    with tracer.start_as_current_span("route_and_process") as span:
+        span.set_attribute("input.value", user_input)
+        span.set_attribute("routing.mode", "langgraph" if USE_LANGGRAPH else "keyword")
+
+        if USE_LANGGRAPH:
+            try:
+                workflow = _get_langgraph_workflow()
+                result = workflow.invoke(user_input, context=context)
+                response = result.get("response", "")
+                intent = result.get("intent", "unknown")
+
+                span.set_attribute("routing.intent", intent)
+
+                if response:
+                    return response
+                # Fall through to keyword routing if no response
+            except Exception as e:
+                span.set_attribute("routing.langgraph_error", str(e))
+                print(f"LangGraph routing failed, falling back to keywords: {e}")
+
+        # Keyword-based routing (fallback)
+        return _keyword_based_routing(user_input)
+
+
+def _keyword_based_routing(user_input: str) -> str:
+    """
+    Keyword-based routing fallback.
+
+    Fast heuristic routing based on keyword matching.
     """
     query_lower = user_input.lower()
 
@@ -45,8 +103,7 @@ def route_and_process(user_input: str) -> str:
         "what's happening", "market update"
     ]
 
-    # Market analysis keywords (broader market, not specific stocks)
-    # Note: "dow" changed to "dow jones" to avoid matching "down" (payment)
+    # Market analysis keywords
     market_analysis_keywords = [
         "market overview", "market summary", "sector", "trend",
         "technical analysis", "moving average", "rsi", "vix",
@@ -77,7 +134,7 @@ def route_and_process(user_input: str) -> str:
     if any(k in query_lower for k in news_keywords):
         return news_agent.process_query(user_input)
 
-    # 3. Market analysis queries (trends, sectors, technical)
+    # 3. Market analysis queries
     if any(k in query_lower for k in market_analysis_keywords):
         return market_agent.process_query(user_input)
 
@@ -88,10 +145,9 @@ def route_and_process(user_input: str) -> str:
     # 5. Portfolio/specific stock queries
     if any(k in query_lower for k in portfolio_keywords) or user_input.isupper():
         response = portfolio_agent.process_query(user_input)
-        # Fallback to finance agent if portfolio agent couldn't help
         if "couldn't identify" in response:
             response = finance_agent.process_query(user_input)
         return response
 
-    # 6. Default to Finance Q&A for general education
+    # 6. Default to Finance Q&A
     return finance_agent.process_query(user_input)
