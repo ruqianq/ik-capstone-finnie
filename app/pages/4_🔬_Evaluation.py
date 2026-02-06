@@ -47,7 +47,7 @@ with st.sidebar:
 
 
 # Tab layout
-tab1, tab2, tab3 = st.tabs(["📊 Results", "▶️ Run Evaluation", "📝 Manual Test"])
+tab1, tab2 = st.tabs(["📊 Results", "📝 Manual Test"])
 
 
 with tab1:
@@ -169,93 +169,18 @@ with tab1:
     else:
         st.info("No evaluation results found. Run an evaluation first!")
         st.markdown("""
-        To run evaluations:
-        1. Make sure Phoenix is running with traces
-        2. Go to the 'Run Evaluation' tab
-        3. Click 'Run Evaluation'
+        To run evaluations from the command line:
+        ```bash
+        # Inside Docker container:
+        docker-compose exec finnie-app python -m app.evaluation.runner --limit 50 --phoenix-url http://phoenix:6006
+
+        # Or use make command:
+        make evaluate
+        ```
         """)
 
 
 with tab2:
-    st.markdown("### Run New Evaluation")
-
-    st.markdown("""
-    This will fetch traces from Phoenix and run evaluations using LLM-as-judge.
-    Make sure:
-    - Phoenix is running at the configured URL
-    - You have traces stored from agent interactions
-    - OpenAI API key is set for running evaluators
-    """)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        limit = st.number_input("Max traces to evaluate", min_value=1, max_value=500, value=50)
-
-    with col2:
-        phoenix_url = st.text_input("Phoenix URL", value=os.getenv("PHOENIX_URL", "http://localhost:6007"))
-
-    upload_to_phoenix = st.checkbox(
-        "Upload results to Phoenix UI",
-        value=True,
-        help="When enabled, evaluation scores will be visible alongside traces in Phoenix"
-    )
-
-    if st.button("🚀 Run Evaluation", type="primary", use_container_width=True):
-        try:
-            from app.evaluation.runner import EvaluationRunner
-
-            with st.spinner("Running evaluations... This may take a few minutes."):
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-
-                runner = EvaluationRunner(phoenix_url=phoenix_url)
-
-                status_text.text("Fetching traces from Phoenix...")
-                progress_bar.progress(10)
-
-                reports = runner.run_evaluation(
-                    limit=limit,
-                    upload_to_phoenix=upload_to_phoenix
-                )
-
-                progress_bar.progress(90)
-
-                if reports:
-                    status_text.text("Saving results...")
-                    runner.save_results(reports, "eval_results.json")
-
-                    progress_bar.progress(100)
-                    status_text.text("")
-
-                    # Show summary
-                    summary = runner.get_summary_metrics(reports)
-
-                    st.success(f"Completed {len(reports)} evaluations!")
-
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Evaluations", summary['total_evaluations'])
-                    with col2:
-                        st.metric("Average Score", f"{summary['overall_average']}/5.0")
-                    with col3:
-                        excellent = summary['score_distribution'].get('excellent (5)', 0)
-                        st.metric("Excellent Scores", excellent)
-
-                    st.info("Results saved! Refresh the 'Results' tab to see detailed analysis.")
-
-                    if upload_to_phoenix:
-                        st.success(f"Evaluations uploaded to Phoenix! [View in Phoenix UI]({phoenix_url})")
-                else:
-                    st.warning("No evaluable traces found. Make sure Phoenix has traces from agent interactions.")
-
-        except ImportError as e:
-            st.error(f"Import error: {e}. Make sure phoenix package is installed.")
-        except Exception as e:
-            st.error(f"Error running evaluation: {e}")
-
-
-with tab3:
     st.markdown("### Manual Evaluation Test")
     st.markdown("Test the evaluation system with a custom query/response pair.")
 
