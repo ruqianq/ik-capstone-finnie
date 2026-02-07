@@ -47,7 +47,7 @@ with st.sidebar:
 
 
 # Tab layout
-tab1, tab2 = st.tabs(["📊 Results", "📝 Manual Test"])
+tab1, tab2, tab3 = st.tabs(["📊 Results", "🚀 Run Evaluation", "📝 Manual Test"])
 
 
 with tab1:
@@ -181,6 +181,133 @@ with tab1:
 
 
 with tab2:
+    st.markdown("### Run Evaluation from Traces")
+    st.markdown("Pull traces from Phoenix and evaluate agent performance automatically.")
+
+    # Show current Phoenix URL for diagnostics
+    current_phoenix_url = os.getenv("PHOENIX_URL", "http://localhost:6007")
+    st.caption(f"Phoenix endpoint: `{current_phoenix_url}`")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        trace_limit = st.number_input("Max traces to evaluate", min_value=1, max_value=500, value=50)
+    with col2:
+        upload_to_phoenix = st.checkbox("Upload results to Phoenix UI", value=True)
+
+    output_file = st.text_input("Output file", value="eval_results.json")
+
+    bcol1, bcol2 = st.columns(2)
+    run_eval = bcol1.button("🚀 Run Evaluation", type="primary")
+    test_conn = bcol2.button("🔌 Test Connection")
+
+    if test_conn:
+        try:
+            from app.evaluation.runner import EvaluationRunner
+            runner = EvaluationRunner()
+            with st.spinner(f"Testing connection to `{runner.phoenix_url}`..."):
+                ok, msg = runner.test_connection()
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
+        except Exception as e:
+            st.error(f"Could not initialize runner: {e}")
+
+    if run_eval:
+        try:
+            from app.evaluation.runner import EvaluationRunner
+
+            runner = EvaluationRunner()
+            st.info(f"Connecting to Phoenix at `{runner.phoenix_url}`...")
+
+            # Test connection first
+            with st.spinner("Testing Phoenix connection..."):
+                ok, msg = runner.test_connection()
+
+            if not ok:
+                st.error(f"Cannot reach Phoenix: {msg}")
+                st.markdown("""
+                **Troubleshooting:**
+                - Make sure Phoenix is running: `docker-compose up -d`
+                - Inside Docker, the URL should be `http://phoenix:6006`
+                - Outside Docker, use `http://localhost:6007`
+                """)
+            else:
+                st.success("Phoenix connection OK")
+
+                with st.spinner(f"Fetching up to {trace_limit} traces..."):
+                    try:
+                        spans_df = runner.get_traces(limit=trace_limit)
+                    except ConnectionError as e:
+                        st.error(str(e))
+                        spans_df = pd.DataFrame()
+
+                if spans_df.empty:
+                    st.warning("No traces found in Phoenix. Chat with the agent first to generate traces, then try again.")
+                else:
+                    st.success(f"Found {len(spans_df)} spans")
+
+                    with st.spinner("Extracting trace data..."):
+                        traces = runner.extract_trace_data(spans_df)
+
+                    if not traces:
+                        st.warning("No evaluable traces found (spans missing input/output data).")
+                    else:
+                        st.info(f"Extracted {len(traces)} evaluable traces. Running evaluations...")
+
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+
+                        reports = []
+                        evaluated_traces = []
+                        for i, trace_item in enumerate(traces):
+                            status_text.text(f"Evaluating trace {i+1}/{len(traces)}...")
+                            progress_bar.progress((i + 1) / len(traces))
+                            try:
+                                report = runner.evaluate_trace(trace_item)
+                                reports.append(report)
+                                evaluated_traces.append(trace_item)
+                            except Exception as e:
+                                st.warning(f"Error evaluating trace {trace_item.trace_id}: {e}")
+
+                        progress_bar.empty()
+                        status_text.empty()
+
+                        if reports:
+                            # Upload to Phoenix
+                            if upload_to_phoenix:
+                                with st.spinner("Uploading evaluations to Phoenix..."):
+                                    runner.upload_to_phoenix(evaluated_traces, reports)
+
+                            # Save results
+                            runner.save_results(reports, output_file)
+
+                            # Show summary
+                            summary = runner.get_summary_metrics(reports)
+                            st.success(f"Completed {len(reports)} evaluations! Results saved to `{output_file}`.")
+
+                            mcol1, mcol2, mcol3 = st.columns(3)
+                            with mcol1:
+                                st.metric("Total Evaluated", summary["total_evaluations"])
+                            with mcol2:
+                                st.metric("Average Score", f"{summary['overall_average']}/5.0")
+                            with mcol3:
+                                dist = summary.get("score_distribution", {})
+                                st.metric("Excellent (≥4.5)", dist.get("excellent (5)", 0))
+
+                            st.markdown("**Scores by Type:**")
+                            for eval_type, metrics in summary.get("by_evaluation_type", {}).items():
+                                st.markdown(f"- **{eval_type.replace('_', ' ').title()}**: {metrics['average']}/5.0 (n={metrics['count']})")
+
+                            st.info("Refresh the **Results** tab to see full charts and details.")
+                        else:
+                            st.error("All evaluations failed.")
+
+        except Exception as e:
+            st.error(f"Error: {e}")
+
+
+with tab3:
     st.markdown("### Manual Evaluation Test")
     st.markdown("Test the evaluation system with a custom query/response pair.")
 
@@ -210,10 +337,11 @@ It's one of the best ways to save for retirement due to tax benefits and potenti
     )
 
     documents = st.text_area(
-        "Retrieved Documents (optional, one per line)",
-        placeholder="Paste retrieved document content here...",
+        "Retrieved Documents / Context (one per line)",
+        placeholder="Paste retrieved document content here to enable RAG relevance, groundedness, and hallucination evaluations...",
         height=100
     )
+    st.caption("Required for: RAG Relevance, Groundedness, Hallucination. Without documents, only Response Quality runs.")
 
     if st.button("🔍 Evaluate", type="primary"):
         try:

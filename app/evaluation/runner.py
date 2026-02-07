@@ -82,6 +82,20 @@ class EvaluationRunner:
         self.quality_evaluator = ResponseQualityEvaluator()
         self.hallucination_evaluator = HallucinationEvaluator()
 
+    def test_connection(self) -> tuple:
+        """
+        Test connectivity to Phoenix.
+
+        Returns:
+            Tuple of (success: bool, message: str)
+        """
+        try:
+            client = px.Client(endpoint=self.phoenix_url)
+            client.get_spans_dataframe()
+            return True, f"Connected to Phoenix at {self.phoenix_url}"
+        except Exception as e:
+            return False, f"Cannot connect to Phoenix at {self.phoenix_url}: {e}"
+
     def get_traces(
         self,
         limit: int = 100,
@@ -98,6 +112,9 @@ class EvaluationRunner:
 
         Returns:
             DataFrame with trace data
+
+        Raises:
+            ConnectionError: If Phoenix is unreachable
         """
         try:
             # Connect to Phoenix and get traces
@@ -122,8 +139,7 @@ class EvaluationRunner:
             return spans_df
 
         except Exception as e:
-            print(f"Error fetching traces from Phoenix: {e}")
-            return pd.DataFrame()
+            raise ConnectionError(f"Failed to fetch traces from Phoenix at {self.phoenix_url}: {e}") from e
 
     def _extract_value(self, data: Any, keys: List[str]) -> Optional[str]:
         """Try to extract a string value from various possible locations."""
@@ -348,13 +364,14 @@ class EvaluationRunner:
         )
         evaluations["response_quality"] = quality_result.to_dict()
 
-        # Always run hallucination check
-        hallucination_result = self.hallucination_evaluator.evaluate(
-            query=trace.query,
-            response=trace.response,
-            context="\n".join(trace.retrieved_documents) if trace.retrieved_documents else ""
-        )
-        evaluations["hallucination"] = hallucination_result.to_dict()
+        # Run hallucination check if documents/context are available
+        if trace.retrieved_documents:
+            hallucination_result = self.hallucination_evaluator.evaluate(
+                query=trace.query,
+                response=trace.response,
+                context="\n".join(trace.retrieved_documents)
+            )
+            evaluations["hallucination"] = hallucination_result.to_dict()
 
         # Run routing evaluation if intent is available
         if trace.intent:
