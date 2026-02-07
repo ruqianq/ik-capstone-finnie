@@ -6,7 +6,9 @@ Enhanced Streamlit UI
 import streamlit as st
 import sys
 import os
+import uuid
 from datetime import datetime
+from openinference.instrumentation import using_session
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -99,6 +101,8 @@ def init_session_state():
         st.session_state.messages = []
     if "show_welcome" not in st.session_state:
         st.session_state.show_welcome = True
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
 
 
 def render_sidebar():
@@ -162,6 +166,7 @@ def render_sidebar():
         if st.button("🗑️ Clear Chat", use_container_width=True):
             st.session_state.messages = []
             st.session_state.show_welcome = True
+            st.session_state.session_id = str(uuid.uuid4())
             st.rerun()
 
         # Export chat
@@ -299,19 +304,29 @@ def process_message(prompt: str):
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # Build context from recent message history (last 5 exchanges)
+    recent_messages = st.session_state.messages[-11:-1]
+    context = None
+    if recent_messages:
+        context = "\n".join(
+            f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
+            for m in recent_messages
+        )
+
     # Process with Agent Router
     with st.chat_message("assistant"):
         with st.spinner("🤔 Thinking..."):
-            with tracer.start_as_current_span("streamlit_interaction") as span:
-                span.set_attribute("openinference.span.kind", "CHAIN")
-                span.set_attribute("input.value", prompt)
+            with using_session(st.session_state.session_id):
+                with tracer.start_as_current_span("streamlit_interaction") as span:
+                    span.set_attribute("openinference.span.kind", "CHAIN")
+                    span.set_attribute("input.value", prompt)
 
-                try:
-                    response = route_and_process(prompt)
-                    span.set_attribute("output.value", response)
-                except Exception as e:
-                    response = f"I encountered an error processing your request. Please try again. Error: {str(e)}"
-                    span.set_attribute("error", str(e))
+                    try:
+                        response = route_and_process(prompt, context=context)
+                        span.set_attribute("output.value", response)
+                    except Exception as e:
+                        response = f"I encountered an error processing your request. Please try again. Error: {str(e)}"
+                        span.set_attribute("error", str(e))
 
         # Get agent badge
         badge = get_agent_badge(response)
